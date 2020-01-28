@@ -1064,6 +1064,7 @@ impl GpuTypeDef {
                 write!(r, "    uint tag;\n").unwrap();
 
                 let size = self.size(module);
+                println!("size: {}", size);
                 // TODO: this sometimes predicts incorrect number of u32s needed to store body (differences with metal alignment)
                 let body_size = ((size + 3) >> 2) - 1;
 
@@ -1080,20 +1081,22 @@ impl GpuTypeDef {
                 write!(r, "}}\n\n").unwrap();
 
                 let quotient_in_u32x4 = size / (4 * GpuScalar::U32.size());
-                let remainder_in_u32s = size - quotient_in_u32x4 * 4;
+                let quotient_in_bytes = quotient_in_u32x4 * 16;
+                let remainder_in_u32s = (size - quotient_in_bytes) / 4;
+
                 write!(r, "{}", "inline void PietItem_read_into(ByteAddressBuffer src, uint src_ref, RWByteAddressBuffer dst, uint dst_ref) {\n").unwrap();
                 for i in 0..quotient_in_u32x4 {
                     write!(
                         r,
                         "    uint4 group{} = src.Load4({});\n",
                         i,
-                        simplified_add("src_ref", i * 4)
+                        simplified_add("src_ref", i * 16)
                     )
                     .unwrap();
                     write!(
                         r,
                         "    dst.Store4({}, group{});\n",
-                        simplified_add("dst_ref", i * 4),
+                        simplified_add("dst_ref", i * 16),
                         i,
                     )
                     .unwrap();
@@ -1106,14 +1109,15 @@ impl GpuTypeDef {
                             remainder_in_u32s,
                             quotient_in_u32x4,
                             remainder_in_u32s,
-                            simplified_add("src_ref", quotient_in_u32x4 * 4)
+                            simplified_add("src_ref", quotient_in_u32x4 * 16)
                         )
                         .unwrap();
                         write!(
                             r,
-                            "    dst.Store{}({});\n",
+                            "    dst.Store{}({}, group{});\n",
                             remainder_in_u32s,
-                            simplified_add("dst_ref", quotient_in_u32x4 * 4)
+                            simplified_add("dst_ref", quotient_in_u32x4 * 16),
+                            quotient_in_u32x4,
                         )
                         .unwrap();
                     }
